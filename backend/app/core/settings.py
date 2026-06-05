@@ -30,6 +30,14 @@ class Settings(BaseSettings):
     LLM_API_KEY: str = ""
     LLM_API_ENDPOINT: str = "http://localhost:11434"
 
+    # Contextual RAG Settings
+    OLLAMA_HOST: str = "http://localhost:11434"
+    CONTEXT_MODEL: str = "qwen3:4b"
+    CONTEXT_MAX_WORDS: int = 50
+    CHUNK_SIZE: int = 1000
+    CHUNK_OVERLAP: int = 200
+
+
     @property
     def storage_path(self) -> Path:
         """Returns the absolute path to backend/app/storage or configured STORAGE_DIR."""

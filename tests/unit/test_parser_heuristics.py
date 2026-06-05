@@ -292,10 +292,15 @@ class TestParserHeuristics(unittest.TestCase):
         self.assertEqual(suggestions["monthly_income"], 15000.0)
         self.assertEqual(suggestions["father_name"], "Birendra Singh")
 
+    @unittest.skipIf(
+        not os.path.exists(os.path.join(os.path.dirname(__file__), "ma3078_raw_text.txt")),
+        "ma3078_raw_text.txt not found"
+    )
     def test_ma3078_pdf_extraction(self):
         """Verify parsing suggestions on the actual MA_3078_2021.pdf raw text."""
         txt_path = os.path.join(os.path.dirname(__file__), "ma3078_raw_text.txt")
         self.assertTrue(os.path.exists(txt_path))
+
         
         with open(txt_path, "r", encoding="utf-8") as f:
             text_lines = f.read().split("\n")

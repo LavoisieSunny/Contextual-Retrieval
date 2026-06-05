@@ -1,16 +1,24 @@
+# backend/app/services/document/upload_service.py
 import os
 import uuid
+import docx
 from pathlib import Path
 from fastapi import UploadFile
+
 from app.core.settings import settings
 from app.core.logger import logger
-from app.services.document.parser import extract_text
-from app.services.document.chunker import chunk_text
+from app.services.document.pipeline import SmartOCRPipeline
+from app.services.contextual_rag.ingestion_pipeline import ContextualIngestionPipeline
 
 ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt"}
 
 def save_uploaded_file(file: UploadFile) -> dict:
-    """Saves file to backend/app/storage/uploads, validates headers, and runs parsing/chunking mock-pipeline."""
+    """
+    Saves an uploaded file, extracts text depending on its extension 
+    (running SmartOCRPipeline for PDFs, using python-docx for Word files, 
+    and direct read for text files), cleans and chunks the text, generates 
+    context using Ollama, and stores the contextual chunks as JSON.
+    """
     filename = file.filename or "unknown"
     file_ext = Path(filename).suffix.lower()
     
@@ -51,18 +59,42 @@ def save_uploaded_file(file: UploadFile) -> dict:
             
         logger.info(f"File stored successfully at {file_path}")
         
-        # Parse text (placeholder)
-        raw_text = extract_text(file_path)
-        
-        # Chunk text (placeholder)
-        chunks = chunk_text(raw_text)
+        # 1. Parse/Extract Text based on file type
+        raw_text = ""
+        if file_ext == ".pdf":
+            logger.info("Routing PDF to SmartOCRPipeline for text extraction/OCR...")
+            pipeline = SmartOCRPipeline()
+            pipeline_res = pipeline.process_pdf(file_path)
+            raw_text = "\n".join(pipeline_res.get("raw_text", []))
+        elif file_ext == ".docx":
+            logger.info("Extracting text from DOCX file...")
+            doc = docx.Document(file_path)
+            raw_text = "\n".join([p.text for p in doc.paragraphs])
+        else:  # .txt
+            logger.info("Extracting text from TXT file...")
+            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                raw_text = f.read()
+
+        if not raw_text.strip():
+            return {
+                "filename": filename,
+                "content_type": file.content_type or "unknown",
+                "file_size_bytes": file_size,
+                "status": "failed",
+                "message": "File was successfully stored but no text could be extracted.",
+                "document_id": document_id
+            }
+
+        # 2. Run Contextual Ingestion Pipeline (Cleaning, Chinking, Context Generation, Storing)
+        ingestion_pipeline = ContextualIngestionPipeline()
+        contextual_chunks = ingestion_pipeline.process_document(document_id, raw_text)
         
         return {
             "filename": filename,
             "content_type": file.content_type or "unknown",
             "file_size_bytes": file_size,
             "status": "success",
-            "message": f"File uploaded and indexed successfully. Extracted {len(raw_text)} characters, split into {len(chunks)} chunks.",
+            "message": f"File uploaded, OCR/Text extracted, and indexed successfully. Split into {len(contextual_chunks)} contextual chunks.",
             "document_id": document_id
         }
         
