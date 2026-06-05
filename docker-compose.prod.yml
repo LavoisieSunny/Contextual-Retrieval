@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  backend:
+    environment:
+      - ENVIRONMENT=production
+      - LOG_LEVEL=INFO
+    restart: always
+
+  frontend:
+    environment:
+      - NODE_ENV=production
+    restart: always
