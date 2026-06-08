@@ -12,21 +12,24 @@ from app.services.contextual_rag.ingestion_pipeline import ContextualIngestionPi
 
 ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt"}
 
+# Global job status tracker
+# {job_id: {"status": "processing" | "success" | "failed", "message": str, "filename": str, "document_id": str}}
+jobs_tracker = {}
+
+def get_job_status(job_id: str) -> dict:
+    """Retrieves the status of a background upload/ingestion job."""
+    return jobs_tracker.get(job_id)
+
 def save_uploaded_file(file: UploadFile) -> dict:
     """
-    Saves an uploaded file, extracts text depending on its extension 
-    (running SmartOCRPipeline for PDFs, using python-docx for Word files, 
-    and direct read for text files), cleans and chunks the text, generates 
-    context using Ollama, and stores the contextual chunks as JSON.
+    Saves an uploaded file synchronously, validates it, and returns details
+    needed to run processing in the background.
     """
     filename = file.filename or "unknown"
     file_ext = Path(filename).suffix.lower()
     
     if file_ext not in ALLOWED_EXTENSIONS:
         return {
-            "filename": filename,
-            "content_type": file.content_type or "unknown",
-            "file_size_bytes": 0,
             "status": "failed",
             "message": f"Unsupported extension {file_ext}. Allowed: {', '.join(ALLOWED_EXTENSIONS)}"
         }
@@ -47,9 +50,6 @@ def save_uploaded_file(file: UploadFile) -> dict:
         
         if file_size > max_size_bytes:
             return {
-                "filename": filename,
-                "content_type": file.content_type or "unknown",
-                "file_size_bytes": file_size,
                 "status": "failed",
                 "message": f"File size exceeds maximum threshold of {settings.MAX_FILE_SIZE_MB}MB"
             }
@@ -59,13 +59,44 @@ def save_uploaded_file(file: UploadFile) -> dict:
             
         logger.info(f"File stored successfully at {file_path}")
         
+        # Initialize job in tracker
+        jobs_tracker[document_id] = {
+            "status": "processing",
+            "message": "File saved on disk. Starting text extraction and ingestion...",
+            "filename": filename,
+            "content_type": file.content_type,
+            "file_size_bytes": file_size,
+            "document_id": document_id
+        }
+
+        return {
+            "status": "success",
+            "document_id": document_id,
+            "file_path": str(file_path),
+            "file_ext": file_ext,
+            "filename": filename,
+            "content_type": file.content_type or "unknown",
+            "file_size_bytes": file_size
+        }
+        
+    except Exception as e:
+        logger.error(f"Error saving file {filename}: {e}")
+        return {
+            "status": "failed",
+            "message": f"Server upload failure: {e}"
+        }
+
+def process_upload_background(document_id: str, file_path: str, file_ext: str, filename: str):
+    """Heavy text extraction and Contextual RAG ingestion run in a background task."""
+    logger.info(f"Starting background processing for document {document_id} ({filename})...")
+    try:
         # 1. Parse/Extract Text based on file type
         raw_text = ""
         suggestions = {}
         if file_ext == ".pdf":
             logger.info("Routing PDF to SmartOCRPipeline for text extraction/OCR...")
             pipeline = SmartOCRPipeline()
-            pipeline_res = pipeline.process_pdf(file_path)
+            pipeline_res = pipeline.process_pdf(Path(file_path))
             raw_text = "\n".join(pipeline_res.get("raw_text", []))
             suggestions = pipeline_res.get("suggestions", {})
         elif file_ext == ".docx":
@@ -81,34 +112,25 @@ def save_uploaded_file(file: UploadFile) -> dict:
         suggestions["filename"] = filename
 
         if not raw_text.strip():
-            return {
-                "filename": filename,
-                "content_type": file.content_type or "unknown",
-                "file_size_bytes": file_size,
+            jobs_tracker[document_id].update({
                 "status": "failed",
-                "message": "File was successfully stored but no text could be extracted.",
-                "document_id": document_id
-            }
+                "message": "No text could be extracted from the file."
+            })
+            return
 
         # 2. Run Contextual Ingestion Pipeline (Cleaning, Chinking, Context Generation, Storing)
         ingestion_pipeline = ContextualIngestionPipeline()
         contextual_chunks = ingestion_pipeline.process_document(document_id, raw_text, suggestions=suggestions)
         
-        return {
-            "filename": filename,
-            "content_type": file.content_type or "unknown",
-            "file_size_bytes": file_size,
+        jobs_tracker[document_id].update({
             "status": "success",
-            "message": f"File uploaded, OCR/Text extracted, and indexed successfully. Split into {len(contextual_chunks)} contextual chunks.",
-            "document_id": document_id
-        }
+            "message": f"File indexed successfully. Split into {len(contextual_chunks)} contextual chunks."
+        })
+        logger.info(f"Background processing succeeded for document {document_id}")
         
     except Exception as e:
-        logger.error(f"Error handling file upload {filename}: {e}")
-        return {
-            "filename": filename,
-            "content_type": file.content_type or "unknown",
-            "file_size_bytes": 0,
+        logger.error(f"Error during background processing of document {document_id}: {e}")
+        jobs_tracker[document_id].update({
             "status": "failed",
-            "message": f"Server upload pipeline failure: {e}"
-        }
+            "message": f"Processing failed: {str(e)}"
+        })

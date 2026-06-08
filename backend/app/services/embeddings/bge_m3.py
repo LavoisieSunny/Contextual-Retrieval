@@ -29,7 +29,7 @@ def embed_dense(texts: list[str]) -> list[list[float]]:
     output = model.encode(
         texts,
         batch_size=4,
-        max_length=512,
+        max_length=8192,
         return_dense=True,
         return_sparse=False,
         return_colbert_vecs=False
@@ -43,7 +43,7 @@ def embed_sparse(texts: list[str]) -> list[dict]:
     output = model.encode(
         texts,
         batch_size=4,
-        max_length=512,
+        max_length=8192,
         return_dense=False,
         return_sparse=True,
         return_colbert_vecs=False
@@ -58,7 +58,7 @@ def embed_both(texts: list[str]) -> tuple[list, list]:
     output = model.encode(
         texts,
         batch_size=4,
-        max_length=512,
+        max_length=8192,
         return_dense=True,
         return_sparse=True,
         return_colbert_vecs=False

@@ -8,15 +8,19 @@ def generate_chat_response(request: ChatQueryRequest) -> ChatQueryResponse:
     """Generates RAG response from conversational query using Qdrant and LLM."""
     logger.info(f"Generating chatbot response for query: {request.message}")
     
-    # 1. Perform semantic vector search
+    # 1. Perform semantic vector search (retrieve more for reranking)
     try:
         search_results = semantic_search_rag(
             query=request.message, 
-            limit=5, 
+            limit=15, 
             filename_filter=None
         )
+        # Apply reranking pass using ColBERT score
+        from app.services.contextual_rag.reranker import BGEReranker
+        reranker = BGEReranker()
+        search_results = reranker.rerank(query=request.message, chunks=search_results, top_n=5)
     except Exception as e:
-        logger.error(f"Semantic search failed during chatbot query: {str(e)}")
+        logger.error(f"Semantic search or reranking failed during chatbot query: {str(e)}")
         search_results = []
     
     # 2. Construct context from retrieved points

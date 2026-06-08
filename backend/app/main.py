@@ -200,13 +200,18 @@ async def chat_with_pdf(request: PDFChatRequest):
         if filename_filter == "all" or filename_filter == "":
             filename_filter = None
 
-        # 1. Perform semantic vector search using the RAG helper
+        # 1. Perform semantic vector search using the RAG helper (retrieve more for reranking)
         from app.services.qdrant.vector_db import semantic_search_rag
         search_results = semantic_search_rag(
             query=question_str, 
-            limit=5, 
+            limit=15, 
             filename_filter=filename_filter
         )
+        
+        # Rerank retrieved chunks using ColBERT score
+        from app.services.contextual_rag.reranker import BGEReranker
+        reranker = BGEReranker()
+        search_results = reranker.rerank(query=question_str, chunks=search_results, top_n=5)
         
         # 2. Construct context from retrieved points
         context_blocks = []
@@ -218,7 +223,7 @@ async def chat_with_pdf(request: PDFChatRequest):
             
             precedents.append({
                 "filename": filename,
-                "score": res.get("score"),
+                "score": res.get("rerank_score", res.get("score")),
                 "text": text_block,
                 "metadata": res.get("metadata", {})
             })
