@@ -14,6 +14,36 @@ from app.services.contextual_rag.ingestion_pipeline import ContextualIngestionPi
 
 class TestContextualRAG(unittest.TestCase):
     
+    def setUp(self):
+        import numpy as np
+        from unittest.mock import MagicMock, patch
+        self.get_bge_m3_patcher = patch("app.services.document.chunker.get_bge_m3")
+        self.mock_get_bge_m3 = self.get_bge_m3_patcher.start()
+        
+        self.mock_model = MagicMock()
+        self.mock_model.encode.side_effect = lambda sentences, **kwargs: {
+            'dense_vecs': [np.random.rand(1024) for _ in sentences]
+        }
+        self.mock_get_bge_m3.return_value = self.mock_model
+
+        # Mock langchain components for offline testing
+        self.embeddings_patcher = patch("langchain_community.embeddings.HuggingFaceBgeEmbeddings")
+        self.mock_embeddings = self.embeddings_patcher.start()
+
+        self.splitter_patcher = patch("langchain_experimental.text_splitter.SemanticChunker")
+        self.mock_splitter = self.splitter_patcher.start()
+        
+        mock_splitter_instance = MagicMock()
+        mock_splitter_instance.split_text.side_effect = lambda text: [
+            text[i:i+50] for i in range(0, len(text), 50)
+        ]
+        self.mock_splitter.return_value = mock_splitter_instance
+
+    def tearDown(self):
+        self.get_bge_m3_patcher.stop()
+        self.embeddings_patcher.stop()
+        self.splitter_patcher.stop()
+
     def test_settings_loading(self):
         """Verify settings retrieve configured environment variables or defaults."""
         self.assertEqual(settings.CONTEXT_MODEL, "qwen3:4b")
@@ -101,8 +131,9 @@ class TestContextualRAG(unittest.TestCase):
         for chunk in chunks:
             self.assertTrue(len(chunk) <= 50)
 
+    @patch("app.services.qdrant.vector_db.index_contextual_chunks")
     @patch("langchain_ollama.ChatOllama")
-    def test_contextual_ingestion_pipeline_end_to_end(self, mock_chat_ollama):
+    def test_contextual_ingestion_pipeline_end_to_end(self, mock_chat_ollama, mock_index):
         """Verify complete ingestion pipeline: OCR text -> cleaned text -> page matching -> json storage."""
         # Setup temporary directories for testing output storage to prevent polluting workspace
         temp_dir = Path(tempfile.mkdtemp())
@@ -134,6 +165,7 @@ class TestContextualRAG(unittest.TestCase):
 
             # Assertions
             self.assertTrue(len(chunks) > 0)
+            mock_index.assert_called_once_with(document_id, chunks)
             
             # Check page numbers are correctly mapped from --- PAGE X --- boundaries
             page_1_chunk = chunks[0]

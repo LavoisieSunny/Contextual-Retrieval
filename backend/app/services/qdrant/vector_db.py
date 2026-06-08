@@ -4,17 +4,16 @@ import hashlib
 import uuid
 import time
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams, PointStruct
+from qdrant_client.models import Distance, VectorParams, PointStruct, SparseVector
 
 from app.services.qdrant.client import get_qdrant_client as get_base_client
 from app.core.settings import settings
+from app.services.embeddings.bge_m3 import get_bge_m3, embed_dense, embed_both
+from app.services.qdrant.collections import COLLECTION_NAME, create_dual_vector_collection
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("VectorDB")
-
-# Centralized collection name for all legal precedents
-COLLECTION_NAME = "legal_documents"
 
 # Global lazy-initialized clients to prevent loading models during module imports
 _qdrant_client = None
@@ -29,82 +28,25 @@ def get_qdrant_client():
             if _qdrant_client is None:
                 raise ValueError("Central get_qdrant_client returned None")
             
-            # Create centralized legal_documents collection if it doesn't exist yet
-            try:
-                collection_info = _qdrant_client.get_collection(COLLECTION_NAME)
-                
-                # Retrieve vector dimension and distance metrics
-                existing_size = collection_info.config.params.vectors.size
-                existing_distance = collection_info.config.params.vectors.distance
-                
-                # Check distance compatibility
-                distance_str = str(existing_distance).lower()
-                is_cosine = "cosine" in distance_str
-                
-                # Dynamically fetch test embedding size
-                test_emb = get_ollama_embedding("dimension_test_query")
-                detected_dim = len(test_emb) if test_emb is not None else 768
-                
-                if existing_size == detected_dim and is_cosine:
-                    logger.info(f"Existing Qdrant collection '{COLLECTION_NAME}' verified successfully (size={existing_size}, distance={existing_distance}). Reusing safely.")
-                else:
-                    logger.warning(
-                        f"Existing collection '{COLLECTION_NAME}' layout mismatch. "
-                        f"Expected size={detected_dim}, cosine distance. "
-                        f"Found size={existing_size}, distance={existing_distance}. "
-                        "Recreation bypassed to protect existing records. Please manually resolve."
-                    )
-            except Exception:
-                logger.info(f"Collection '{COLLECTION_NAME}' not found. Creating a new one...")
-                
-                # Measure embedding dimension dynamically before creating
-                test_emb = get_ollama_embedding("dimension_test_query")
-                if test_emb is not None and len(test_emb) > 0:
-                    detected_dim = len(test_emb)
-                    logger.info(f"Ollama nomic-embed-text active. Dynamically detected embedding dimension: {detected_dim}")
-                else:
-                    detected_dim = 768
-                    logger.warning(f"Ollama connection offline or embedding failed during startup. Defaulting collection dimension to: {detected_dim}")
-                
-                _qdrant_client.create_collection(
-                    collection_name=COLLECTION_NAME,
-                    vectors_config=VectorParams(size=detected_dim, distance=Distance.COSINE)
-                )
-                logger.info(f"Collection '{COLLECTION_NAME}' created successfully with size={detected_dim}!")
+            # Create dual vector collection
+            create_dual_vector_collection(_qdrant_client)
             
             VECTOR_DB_INITIALIZED = True
         except Exception as e:
-            logger.error(f"Failed to initialize Qdrant client collection safety: {str(e)}")
+            logger.error(f"Failed to initialize Qdrant client collection: {str(e)}")
             _qdrant_client = None
             VECTOR_DB_INITIALIZED = False
     return _qdrant_client
 
-def get_ollama_embedding(text: str) -> list:
+def get_bge_embedding(text: str) -> list:
     """
-    Fetches a 768-dimension vector embedding from local Ollama server
-    using the 'nomic-embed-text' model.
-    Returns None if embedding fails. Never returns a zero vector.
+    Generates a 1024-dimension vector embedding locally
+    using the 'BGE-M3' model via FlagEmbedding.
     """
-    import urllib.request
-    import json
-    
-    base_url = settings.LLM_API_ENDPOINT if settings.LLM_API_ENDPOINT else "http://localhost:11434"
-    url = f"{base_url.rstrip('/')}/api/embeddings"
-    payload = {
-        "model": "nomic-embed-text",
-        "prompt": text
-    }
     try:
-        req_body = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(url, data=req_body, headers={"Content-Type": "application/json"}, method="POST")
-        with urllib.request.urlopen(req, timeout=20.0) as response:
-            res_json = json.loads(response.read().decode("utf-8"))
-            vector = res_json.get("embedding")
-            if not vector or not isinstance(vector, list):
-                raise ValueError("Embedding response is empty or invalid.")
-            return vector
+        return embed_dense([text])[0]
     except Exception as e:
-        logger.error(f"Failed to fetch Ollama embedding: {str(e)}")
+        logger.error(f"Failed to generate BGE-M3 embedding: {str(e)}")
         return None
 
 def get_embedding_model():
@@ -357,18 +299,33 @@ def index_document(filename: str, text_lines: list, suggestions: dict) -> bool:
         return False
 
     try:
-        logger.info(f"Generating Ollama nomic-embed-text embeddings for {len(chunks_with_page)} chunks of: {filename}")
+        logger.info(f"Generating BGE-M3 embeddings for {len(chunks_with_page)} chunks of: {filename}")
+        
+        chunk_texts = [item["text"] for item in chunks_with_page]
+        dense_vectors, sparse_weights = embed_both(chunk_texts)
         
         points = []
         for idx, chunk_item in enumerate(chunks_with_page):
             chunk = chunk_item["text"]
             p_num = chunk_item["page"]
             
-            vector = get_ollama_embedding(chunk)
-            if vector is None:
-                logger.error(f"Embedding generation failed for chunk {idx} of '{filename}'. Skipping this document indexing.")
-                return False
-                
+            dense_vector = dense_vectors[idx]
+            sparse_vector = sparse_weights[idx]
+            
+            # Convert sparse lexical weights {token_id: weight} to Qdrant SparseVector format
+            indices = []
+            values = []
+            for token_id, weight in sparse_vector.items():
+                indices.append(int(token_id))
+                values.append(float(weight))
+            
+            # Sort by index
+            sorted_pairs = sorted(zip(indices, values))
+            indices = [p[0] for p in sorted_pairs]
+            values = [p[1] for p in sorted_pairs]
+            
+            qdrant_sparse = SparseVector(indices=indices, values=values)
+            
             # MD5 hex of filename + chunk_index, converted to UUID string for stable point ID across restarts
             unique_str = f"{filename}_{idx}"
             point_id = str(uuid.UUID(hex=hashlib.md5(unique_str.encode("utf-8")).hexdigest()))
@@ -399,7 +356,10 @@ def index_document(filename: str, text_lines: list, suggestions: dict) -> bool:
             
             points.append(PointStruct(
                 id=point_id,
-                vector=vector,
+                vector={
+                    "dense": dense_vector,
+                    "sparse": qdrant_sparse
+                },
                 payload=payload
             ))
             
@@ -429,8 +389,8 @@ def semantic_search(query: str, limit: int = 5, case_type_filter: str = None, fi
         logger.warning("Vector DB is offline. Returning empty search results.")
         return []
         
-    # Embed query text using Ollama
-    query_vector = get_ollama_embedding(query)
+    # Embed query text using BGE-M3
+    query_vector = get_bge_embedding(query)
     if query_vector is None:
         logger.warning(f"Failed to generate embedding for search query: '{query}'. Returning empty results.")
         return []
@@ -466,6 +426,7 @@ def semantic_search(query: str, limit: int = 5, case_type_filter: str = None, fi
         search_results = client.query_points(
             collection_name=COLLECTION_NAME,
             query=query_vector,
+            using="dense",
             query_filter=search_filter,
             limit=limit
         ).points
@@ -508,3 +469,53 @@ def semantic_search_rag(query: str, limit: int = 5, filename_filter: str = None)
     """
     logger.info(f"RAG search query='{query}', limit={limit}, filename_filter='{filename_filter}'")
     return semantic_search(query, limit=limit, filename_filter=filename_filter)
+
+def index_contextual_chunks(document_id: str, chunks: list[dict]) -> bool:
+    """
+    Indexes contextual chunks into Qdrant with both dense + sparse vectors.
+    Each chunk dict has: chunk_id, combined_text, content, context, metadata.page
+    """
+    client = get_qdrant_client()
+    if not client:
+        return False
+
+    # Extract combined texts for embedding
+    texts = [c["combined_text"] for c in chunks]
+
+    # One call → both dense and sparse
+    dense_vecs, sparse_vecs = embed_both(texts)
+
+    points = []
+    for i, chunk in enumerate(chunks):
+        # Stable unique ID
+        uid = str(uuid.UUID(hex=hashlib.md5(
+            f"{document_id}_{chunk['chunk_id']}".encode()
+        ).hexdigest()))
+
+        # Convert sparse dict {token_id: weight} → Qdrant SparseVector
+        sparse = sparse_vecs[i]
+        sparse_indices = [int(k) for k in sparse.keys()]
+        sparse_values  = [float(v) for v in sparse.values()]
+
+        points.append(PointStruct(
+            id=uid,
+            vector={
+                "dense":  dense_vecs[i],
+                "sparse": SparseVector(
+                    indices=sparse_indices,
+                    values=sparse_values
+                )
+            },
+            payload={
+                "document_id": document_id,
+                "chunk_id":    chunk["chunk_id"],
+                "content":     chunk["content"],
+                "context":     chunk["context"],
+                "combined_text": chunk["combined_text"],
+                "page":        chunk["metadata"]["page"]
+            }
+        ))
+
+    client.upsert(collection_name=COLLECTION_NAME, points=points)
+    logger.info(f"Indexed {len(points)} chunks for document {document_id}")
+    return True

@@ -42,19 +42,24 @@ def validate_ollama_setup() -> dict:
                 name = m.get("name", "")
                 stats["models_found"].append(name)
                 
-            # Verify LLM Model and Embedding Model availability
+            # Verify LLM Model availability
             for model_name in stats["models_found"]:
                 if "qwen2.5:14b" in model_name or settings.LLM_MODEL_NAME in model_name:
                     stats["llm_model_available"] = True
-                if "nomic-embed-text" in model_name:
-                    stats["embedding_model_available"] = True
                     
             logger.info(f"Ollama server is ONLINE at {base_url}. Models found: {stats['models_found']}")
             
             if not stats["llm_model_available"]:
                 logger.warning(f"Ollama model '{settings.LLM_MODEL_NAME}' is missing! Please pull it: 'ollama pull {settings.LLM_MODEL_NAME}'")
-            if not stats["embedding_model_available"]:
-                logger.warning("Ollama embedding model 'nomic-embed-text' is missing! Please pull it: 'ollama pull nomic-embed-text'")
+            
+            # Verify BGE-M3 (FlagEmbedding) availability
+            try:
+                from FlagEmbedding import BGEM3FlagModel
+                stats["embedding_model_available"] = True
+                logger.info("BGE-M3 (FlagEmbedding) is available locally ✓")
+            except ImportError:
+                stats["embedding_model_available"] = False
+                logger.warning("FlagEmbedding not installed. Run: pip install FlagEmbedding")
     except Exception as e:
         logger.error(f"Ollama startup connection failed at {base_url}: {str(e)}")
         

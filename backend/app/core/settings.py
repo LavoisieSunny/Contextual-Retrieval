@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     # Contextual RAG Settings
     OLLAMA_HOST: str = "http://localhost:11434"
     CONTEXT_MODEL: str = "qwen3:4b"
-    CONTEXT_MAX_WORDS: int = 50
+    CONTEXT_MAX_WORDS: int = 80
     CHUNK_SIZE: int = 1000
     CHUNK_OVERLAP: int = 200
 

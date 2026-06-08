@@ -1,6 +1,18 @@
 # backend/app/services/contextual_rag/prompts.py
 
+DOCUMENT_SUMMARY_TEMPLATE = """You are summarizing a legal document.
+Generate a high-level summary of the case (who is the claimant, who is the respondent, what is the claim about) in maximum 100 words.
+
+Document Content:
+{text}
+"""
+
 CONTEXT_PROMPT_TEMPLATE = """You are generating retrieval context.
+
+Here is a high-level summary of the document:
+<document_summary>
+{document_summary}
+</document_summary>
 
 Given a document chunk and nearby surrounding chunks, generate a short explanation describing the role of the chunk within the document.
 

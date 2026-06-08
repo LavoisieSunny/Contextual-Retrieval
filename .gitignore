@@ -34,3 +34,8 @@ backend/app/storage/cache/*
 !backend/app/storage/processed/.gitkeep
 !backend/app/storage/chunks/.gitkeep
 !backend/app/storage/cache/.gitkeep
+
+# Temporary scratch/test files
+scratch/
+test_scan.png
+

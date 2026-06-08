@@ -1,7 +1,7 @@
 # backend/app/services/contextual_rag/context_generator.py
 import logging
 from app.core.settings import settings
-from app.services.contextual_rag.prompts import CONTEXT_PROMPT_TEMPLATE
+from app.services.contextual_rag.prompts import CONTEXT_PROMPT_TEMPLATE, DOCUMENT_SUMMARY_TEMPLATE
 
 logger = logging.getLogger("ContextGenerator")
 
@@ -28,22 +28,51 @@ class ContextGenerator:
             logger.error(f"Failed to initialize ChatOllama: {e}")
             self.llm = None
 
-    def generate_context(self, current_chunk: str, prev_chunk: str = "", next_chunk: str = "") -> str:
+    def generate_document_summary(self, text: str) -> str:
         """
-        Generates context for a chunk using the nearby surrounding chunks.
+        Generates a concise document summary of the legal text using Qwen3.
+        Provides a fallback if Ollama is offline or fails.
+        """
+        if not text:
+            return ""
+        
+        # Limit text length passed to summary to avoid context blowup
+        short_text = text[:12000]
+        
+        prompt = "/no_think\n\n" + DOCUMENT_SUMMARY_TEMPLATE.format(text=short_text)
+        
+        if not self.llm:
+            logger.warning("LLM client not initialized for summary. Using fallback summary.")
+            return "This is a motor accident claims tribunal legal document containing claimant details, accident facts, and compensation demands."
+            
+        try:
+            response = self.llm.invoke(prompt)
+            summary = response.content.strip()
+            if not summary:
+                raise ValueError("Received empty response content from LLM for summary")
+            return summary
+        except Exception as e:
+            logger.warning(f"Failed to generate summary: {e}. Using fallback.")
+            return "This is a motor accident claims tribunal legal document containing claimant details, accident facts, and compensation demands."
+
+    def generate_context(self, current_chunk: str, prev_chunk: str = "", next_chunk: str = "", document_summary: str = "") -> str:
+        """
+        Generates context for a chunk using the nearby surrounding chunks and a document summary.
         Provides a fallback if Ollama is offline or fails.
         """
         # Clean chunks to avoid formatting issues
         current_chunk = current_chunk.strip()
         prev_chunk = prev_chunk.strip() if prev_chunk else "[No preceding content]"
         next_chunk = next_chunk.strip() if next_chunk else "[No succeeding content]"
+        document_summary = document_summary.strip() if document_summary else "[No document summary available]"
         
         # Build prompt
-        prompt = CONTEXT_PROMPT_TEMPLATE.format(
+        prompt = "/no_think\n\n" + CONTEXT_PROMPT_TEMPLATE.format(
             max_words=self.max_words,
             prev_chunk=prev_chunk,
             next_chunk=next_chunk,
-            chunk_content=current_chunk
+            chunk_content=current_chunk,
+            document_summary=document_summary
         )
         
         if not self.llm:

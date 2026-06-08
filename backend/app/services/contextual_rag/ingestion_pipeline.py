@@ -46,7 +46,11 @@ class ContextualIngestionPipeline:
         
         cleaned_text = self._clean_text(raw_text)
         
-        # 1. Chunking text if not provided
+        # Step 1 — Generate document summary ONCE (cheap, reused)
+        doc_summary = self.context_generator.generate_document_summary(cleaned_text)
+        logger.info(f"Document summary: {doc_summary}")
+        
+        # Step 2 — Chunking text if not provided
         if not chunks:
             logger.info("No pre-generated chunks provided. Chunking raw text...")
             chunks = self.chunker.split_text(cleaned_text)
@@ -55,12 +59,11 @@ class ContextualIngestionPipeline:
             logger.warning(f"No chunks found for document {document_id}")
             return []
 
-
         logger.info(f"Generating contexts for {len(chunks)} chunks...")
         contextual_chunks = []
         last_found_idx = 0
 
-        # 2. Iterate and generate context using slide window (previous, current, next)
+        # Step 3 — Iterate and generate context using slide window (previous, current, next)
         for i, current_chunk in enumerate(chunks):
             prev_chunk = chunks[i - 1] if i > 0 else ""
             next_chunk = chunks[i + 1] if i < len(chunks) - 1 else ""
@@ -69,7 +72,8 @@ class ContextualIngestionPipeline:
             context = self.context_generator.generate_context(
                 current_chunk=current_chunk,
                 prev_chunk=prev_chunk,
-                next_chunk=next_chunk
+                next_chunk=next_chunk,
+                document_summary=doc_summary
             )
 
             # Map chunk to page number from cleaned_text
@@ -101,6 +105,10 @@ class ContextualIngestionPipeline:
 
         # 3. Store the contextual chunks in the storage directory
         self._store_chunks(document_id, contextual_chunks)
+
+        # Index the contextual chunks in Qdrant with dense + sparse vectors
+        from app.services.qdrant.vector_db import index_contextual_chunks
+        index_contextual_chunks(document_id, contextual_chunks)
 
         logger.info(f"Successfully processed and stored {len(contextual_chunks)} chunks for document {document_id}")
         return contextual_chunks
