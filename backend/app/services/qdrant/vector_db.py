@@ -4,7 +4,7 @@ import hashlib
 import uuid
 import time
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams, PointStruct, SparseVector
+from qdrant_client.models import Distance, VectorParams, PointStruct, SparseVector, Prefetch, Fusion
 
 from app.services.qdrant.client import get_qdrant_client as get_base_client
 from app.core.settings import settings
@@ -380,7 +380,7 @@ def index_document(filename: str, text_lines: list, suggestions: dict) -> bool:
 
 def semantic_search(query: str, limit: int = 5, case_type_filter: str = None, filename_filter: str = None) -> list:
     """
-    Performs semantic vector search across all indexed PDFs.
+    Performs hybrid (dense + sparse) semantic search across all indexed PDFs.
     Optionally filters by case type ('injury' or 'death') and/or filename.
     """
     client = get_qdrant_client()
@@ -389,11 +389,19 @@ def semantic_search(query: str, limit: int = 5, case_type_filter: str = None, fi
         logger.warning("Vector DB is offline. Returning empty search results.")
         return []
         
-    # Embed query text using BGE-M3
-    query_vector = get_bge_embedding(query)
-    if query_vector is None:
-        logger.warning(f"Failed to generate embedding for search query: '{query}'. Returning empty results.")
+    # Generate both dense and sparse embeddings using BGE-M3
+    try:
+        dense_vectors, sparse_weights = embed_both([query])
+        query_dense = dense_vectors[0]
+        query_sparse_weights = sparse_weights[0]
+    except Exception as e:
+        logger.error(f"Failed to generate BGE-M3 embeddings for search query: '{query}'. Error: {str(e)}")
         return []
+        
+    # Convert sparse dict {token_id: weight} -> Qdrant SparseVector
+    sparse_indices = [int(k) for k in query_sparse_weights.keys()]
+    sparse_values  = [float(v) for v in query_sparse_weights.values()]
+    query_sparse = SparseVector(indices=sparse_indices, values=sparse_values)
         
     try:
         # Build filter conditions
@@ -422,12 +430,24 @@ def semantic_search(query: str, limit: int = 5, case_type_filter: str = None, fi
             from qdrant_client.models import Filter
             search_filter = Filter(must=must_conditions)
             
-        # Execute vector search
+        # Execute hybrid (dense + sparse) search with RRF fusion
         search_results = client.query_points(
             collection_name=COLLECTION_NAME,
-            query=query_vector,
-            using="dense",
-            query_filter=search_filter,
+            prefetch=[
+                Prefetch(
+                    query=query_dense,
+                    using="dense",
+                    filter=search_filter,
+                    limit=limit
+                ),
+                Prefetch(
+                    query=query_sparse,
+                    using="sparse",
+                    filter=search_filter,
+                    limit=limit
+                )
+            ],
+            query=Fusion.RRF,
             limit=limit
         ).points
         
@@ -450,8 +470,8 @@ def semantic_search(query: str, limit: int = 5, case_type_filter: str = None, fi
                     "monthly_income": res.payload.get("monthly_income", ""),
                     "disability": res.payload.get("disability", ""),
                     "award_amount": res.payload.get("award_amount", ""),
-                    "page_number": res.payload.get("page_number", 1),
-                    "chunk_index": res.payload.get("chunk_index", 0),
+                    "page_number": res.payload.get("page_number", res.payload.get("page", 1)),
+                    "chunk_index": res.payload.get("chunk_index", res.payload.get("chunk_id", 0)),
                     "file_hash": res.payload.get("file_hash", "")
                 }
             })
