@@ -32,7 +32,8 @@ class ContextualIngestionPipeline:
         self, 
         document_id: str, 
         raw_text: str, 
-        chunks: Optional[List[str]] = None
+        chunks: Optional[List[str]] = None,
+        suggestions: Optional[Dict[str, Any]] = None
     ) -> List[Dict[str, Any]]:
         """
         Processes a document end-to-end:
@@ -58,16 +59,16 @@ class ContextualIngestionPipeline:
         if not chunks:
             logger.warning(f"No chunks found for document {document_id}")
             return []
-
+ 
         logger.info(f"Generating contexts for {len(chunks)} chunks...")
         contextual_chunks = []
         last_found_idx = 0
-
+ 
         # Step 3 — Iterate and generate context using slide window (previous, current, next)
         for i, current_chunk in enumerate(chunks):
             prev_chunk = chunks[i - 1] if i > 0 else ""
             next_chunk = chunks[i + 1] if i < len(chunks) - 1 else ""
-
+ 
             # Generate context
             context = self.context_generator.generate_context(
                 current_chunk=current_chunk,
@@ -75,7 +76,7 @@ class ContextualIngestionPipeline:
                 next_chunk=next_chunk,
                 document_summary=doc_summary
             )
-
+ 
             # Map chunk to page number from cleaned_text
             page_num = self._find_page_number(cleaned_text, current_chunk, last_found_idx)
             
@@ -83,8 +84,8 @@ class ContextualIngestionPipeline:
             pos = cleaned_text.find(current_chunk, last_found_idx)
             if pos != -1:
                 last_found_idx = pos + len(current_chunk)
-
-
+ 
+ 
             # Create contextual chunk payload
             chunk_data = self.chunker.create_contextual_chunk(
                 content=current_chunk,
@@ -102,14 +103,14 @@ class ContextualIngestionPipeline:
                 }
             }
             contextual_chunks.append(chunk_record)
-
+ 
         # 3. Store the contextual chunks in the storage directory
         self._store_chunks(document_id, contextual_chunks)
-
+ 
         # Index the contextual chunks in Qdrant with dense + sparse vectors
         from app.services.qdrant.vector_db import index_contextual_chunks
-        index_contextual_chunks(document_id, contextual_chunks)
-
+        index_contextual_chunks(document_id, contextual_chunks, suggestions)
+ 
         logger.info(f"Successfully processed and stored {len(contextual_chunks)} chunks for document {document_id}")
         return contextual_chunks
 

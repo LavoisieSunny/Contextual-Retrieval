@@ -397,7 +397,7 @@ def calculate_injury_compensation(
         "misex": misex,
         "loamiti": loamiti,
         "lopmarri": lopmarri,
-        "loexlife": loamiti,
+        "loexlife": loexlife,
         "loveaff": loveaff,
         "lossofenjoy": lossofenjoy,
         "final_amount": round(final_amount),

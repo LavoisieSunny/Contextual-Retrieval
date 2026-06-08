@@ -40,10 +40,11 @@ export default function ChatbotPage() {
         .slice(0, -1)
         .map(msg => ({ role: msg.role, content: msg.content }));
 
-      const res = await fetch(ENDPOINTS.CHAT, {
+      const res = await fetch(ENDPOINTS.CHAT_PDF, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          question: userMessage,
           message: userMessage,
           history: history
         })
@@ -51,12 +52,19 @@ export default function ChatbotPage() {
 
       if (res.ok) {
         const data = await res.json();
+        const content = data.response || data.answer || "";
+        const rawCitations = data.precedents || data.citations || [];
+        const citations = rawCitations.map(p => ({
+          document_name: p.filename || p.document_name || "Unknown Document",
+          page: p.metadata?.page || p.page || 1
+        }));
+
         setMessages((prev) => [
           ...prev,
           {
             role: "assistant",
-            content: data.answer,
-            citations: data.citations || []
+            content: content,
+            citations: citations
           }
         ]);
       } else {

@@ -470,7 +470,7 @@ def semantic_search_rag(query: str, limit: int = 5, filename_filter: str = None)
     logger.info(f"RAG search query='{query}', limit={limit}, filename_filter='{filename_filter}'")
     return semantic_search(query, limit=limit, filename_filter=filename_filter)
 
-def index_contextual_chunks(document_id: str, chunks: list[dict]) -> bool:
+def index_contextual_chunks(document_id: str, chunks: list[dict], suggestions: dict = None) -> bool:
     """
     Indexes contextual chunks into Qdrant with both dense + sparse vectors.
     Each chunk dict has: chunk_id, combined_text, content, context, metadata.page
@@ -478,6 +478,9 @@ def index_contextual_chunks(document_id: str, chunks: list[dict]) -> bool:
     client = get_qdrant_client()
     if not client:
         return False
+
+    if suggestions is None:
+        suggestions = {}
 
     # Extract combined texts for embedding
     texts = [c["combined_text"] for c in chunks]
@@ -512,7 +515,22 @@ def index_contextual_chunks(document_id: str, chunks: list[dict]) -> bool:
                 "content":     chunk["content"],
                 "context":     chunk["context"],
                 "combined_text": chunk["combined_text"],
-                "page":        chunk["metadata"]["page"]
+                "page":        chunk["metadata"]["page"],
+                # Suggestions / Metadata
+                "filename":    suggestions.get("filename", ""),
+                "case_type":   suggestions.get("case_type", "injury"),
+                "claimant":    suggestions.get("name") or suggestions.get("claimant") or "",
+                "respondent":  suggestions.get("respondent", "Insurance Company / Respondent"),
+                "document_type": suggestions.get("document_type", "Judgment"),
+                "upload_date": suggestions.get("upload_date") or time.strftime("%d-%m-%Y"),
+                "name":        suggestions.get("name", ""),
+                "father_name": suggestions.get("father_name", ""),
+                "age":         suggestions.get("age", ""),
+                "monthly_income": suggestions.get("monthly_income", ""),
+                "disability":  suggestions.get("disability", ""),
+                "dependents":  suggestions.get("dependents", ""),
+                "marital_status": suggestions.get("marital_status", "married"),
+                "award_amount": suggestions.get("award_amount", "")
             }
         ))
 

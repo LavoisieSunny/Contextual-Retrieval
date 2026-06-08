@@ -61,11 +61,13 @@ def save_uploaded_file(file: UploadFile) -> dict:
         
         # 1. Parse/Extract Text based on file type
         raw_text = ""
+        suggestions = {}
         if file_ext == ".pdf":
             logger.info("Routing PDF to SmartOCRPipeline for text extraction/OCR...")
             pipeline = SmartOCRPipeline()
             pipeline_res = pipeline.process_pdf(file_path)
             raw_text = "\n".join(pipeline_res.get("raw_text", []))
+            suggestions = pipeline_res.get("suggestions", {})
         elif file_ext == ".docx":
             logger.info("Extracting text from DOCX file...")
             doc = docx.Document(file_path)
@@ -74,6 +76,9 @@ def save_uploaded_file(file: UploadFile) -> dict:
             logger.info("Extracting text from TXT file...")
             with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                 raw_text = f.read()
+
+        # Ensure filename is in suggestions for Qdrant payload
+        suggestions["filename"] = filename
 
         if not raw_text.strip():
             return {
@@ -87,7 +92,7 @@ def save_uploaded_file(file: UploadFile) -> dict:
 
         # 2. Run Contextual Ingestion Pipeline (Cleaning, Chinking, Context Generation, Storing)
         ingestion_pipeline = ContextualIngestionPipeline()
-        contextual_chunks = ingestion_pipeline.process_document(document_id, raw_text)
+        contextual_chunks = ingestion_pipeline.process_document(document_id, raw_text, suggestions=suggestions)
         
         return {
             "filename": filename,
