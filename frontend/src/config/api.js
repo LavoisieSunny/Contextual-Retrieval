@@ -1,19 +1,22 @@
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const _base = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/api\/?$/, "");
+
+export const API_BASE_URL = _base;
 
 // API endpoints
 export const ENDPOINTS = {
-  HEALTH: `${API_BASE_URL}/api/v1/health`,
-  UPLOAD: `${API_BASE_URL}/api/v1/upload`,
-  CHAT: `${API_BASE_URL}/api/v1/chatbot`,
+  HEALTH:           `${_base}/api/v1/health`,
+  UPLOAD:           `${_base}/api/v1/upload`,
+  CHAT:             `${_base}/api/v1/chatbot`,
 
   // Compensation specific
-  CALCULATE: `${API_BASE_URL}/api/calculate/`,
-  SEARCH_EVALUATE: `${API_BASE_URL}/api/search/evaluate`,
-  CHAT_PDF: `${API_BASE_URL}/api/chat/pdf`,
-  QDRANT_POINTS: `${API_BASE_URL}/api/qdrant/points`,
-  OCR_PROCESS: `${API_BASE_URL}/api/ocr/process-ocr`,
-  OCR_BATCH_UPLOAD: `${API_BASE_URL}/api/ocr/upload-batch`,
-  OCR_BATCH_STATUS: `${API_BASE_URL}/api/ocr/batch-status`,
-  OCR_AI_RECOVER: `${API_BASE_URL}/api/ocr/ai-recover`,
-  OCR_SUGGEST_CASE: `${API_BASE_URL}/api/ocr/suggest-case-type`,
+  CALCULATE:        `${_base}/api/calculate/`,
+  SEARCH_EVALUATE:  `${_base}/api/search/evaluate`,
+  CHAT_PDF:         `${_base}/api/chat/pdf`,
+  QDRANT_POINTS:    `${_base}/api/qdrant/points`,
+  OCR_PROCESS:      `${_base}/api/ocr/process-ocr`,
+  OCR_BATCH_UPLOAD: `${_base}/api/ocr/upload-batch`,
+  OCR_BATCH_STATUS: `${_base}/api/ocr/batch-status`,
+  OCR_AI_RECOVER:   `${_base}/api/ocr/ai-recover`,
+  OCR_SUGGEST_CASE: `${_base}/api/ocr/suggest-case-type`,
 };
+
