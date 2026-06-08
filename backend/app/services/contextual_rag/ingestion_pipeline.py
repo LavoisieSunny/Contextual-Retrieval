@@ -28,6 +28,36 @@ class ContextualIngestionPipeline:
         cleaned = re.sub(r'\n\s*\n', '\n\n', cleaned)
         return cleaned.strip()
 
+    async def _generate_context_with_sem(self, sem, current_chunk, prev_chunk, next_chunk, doc_summary):
+        import asyncio
+        async with sem:
+            return await asyncio.to_thread(
+                self.context_generator.generate_context,
+                current_chunk,
+                prev_chunk,
+                next_chunk,
+                doc_summary
+            )
+
+    async def _generate_all_contexts(self, chunks: List[str], doc_summary: str) -> List[str]:
+        import asyncio
+        sem = asyncio.Semaphore(4)
+        tasks = []
+        for i, current_chunk in enumerate(chunks):
+            prev_chunk = chunks[i - 1] if i > 0 else ""
+            next_chunk = chunks[i + 1] if i < len(chunks) - 1 else ""
+            
+            tasks.append(
+                self._generate_context_with_sem(
+                    sem,
+                    current_chunk,
+                    prev_chunk,
+                    next_chunk,
+                    doc_summary
+                )
+            )
+        return await asyncio.gather(*tasks)
+
     def process_document(
         self, 
         document_id: str, 
@@ -39,7 +69,7 @@ class ContextualIngestionPipeline:
         Processes a document end-to-end:
         1. Cleans raw_text.
         2. Takes raw_text and chunks it if chunks are not pre-provided.
-        3. Generates context for each chunk using the surrounding chunks (prev + current + next).
+        3. Generates context for each chunk concurrently.
         4. Creates structured contextual chunks.
         5. Saves each contextual chunk as JSON and returns the list of chunks.
         """
@@ -60,22 +90,28 @@ class ContextualIngestionPipeline:
             logger.warning(f"No chunks found for document {document_id}")
             return []
  
-        logger.info(f"Generating contexts for {len(chunks)} chunks...")
+        logger.info(f"Generating contexts for {len(chunks)} chunks concurrently...")
+        
+        # Parallel generation of contexts using asyncio loop
+        import asyncio
+        try:
+            contexts = asyncio.run(self._generate_all_contexts(chunks, doc_summary))
+        except RuntimeError:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                from concurrent.futures import ThreadPoolExecutor
+                with ThreadPoolExecutor() as executor:
+                    future = executor.submit(lambda: asyncio.run(self._generate_all_contexts(chunks, doc_summary)))
+                    contexts = future.result()
+            else:
+                contexts = loop.run_until_complete(self._generate_all_contexts(chunks, doc_summary))
+
         contextual_chunks = []
         last_found_idx = 0
  
-        # Step 3 — Iterate and generate context using slide window (previous, current, next)
+        # Step 3 — Build contextual chunk records
         for i, current_chunk in enumerate(chunks):
-            prev_chunk = chunks[i - 1] if i > 0 else ""
-            next_chunk = chunks[i + 1] if i < len(chunks) - 1 else ""
- 
-            # Generate context
-            context = self.context_generator.generate_context(
-                current_chunk=current_chunk,
-                prev_chunk=prev_chunk,
-                next_chunk=next_chunk,
-                document_summary=doc_summary
-            )
+            context = contexts[i]
  
             # Map chunk to page number from cleaned_text
             page_num = self._find_page_number(cleaned_text, current_chunk, last_found_idx)
@@ -84,7 +120,6 @@ class ContextualIngestionPipeline:
             pos = cleaned_text.find(current_chunk, last_found_idx)
             if pos != -1:
                 last_found_idx = pos + len(current_chunk)
- 
  
             # Create contextual chunk payload
             chunk_data = self.chunker.create_contextual_chunk(
