@@ -1239,6 +1239,105 @@ export default function CompensationPage() {
             {/* Right Column: Uploader, OCR Process & Recovery stats */}
             <div className="w-[55%] flex flex-col gap-6 overflow-y-auto min-h-0">
               
+              {/* Calculated Result panel */}
+              {calculatedResult && (
+                <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-6 shadow-xl flex flex-col gap-4 bg-gradient-to-br from-indigo-950/20 to-purple-950/10 backdrop-blur-md animate-in fade-in slide-in-from-top duration-300">
+                  <div className="flex justify-between items-center border-b border-slate-800/60 pb-3">
+                    <div className="flex items-center gap-2">
+                      <Calculator className="h-5 w-5 text-indigo-400" />
+                      <h3 className="text-md font-bold text-slate-100">Quantum Calculation Breakdown</h3>
+                    </div>
+                    <span className="text-[10px] uppercase tracking-widest font-black text-indigo-400 bg-indigo-950/40 px-2.5 py-1 rounded-lg border border-indigo-500/20">
+                      {calculatedResult.case_type === "death" ? "💀 Death Case" : "⚡ Injury Claim"}
+                    </span>
+                  </div>
+                  
+                  <div className="overflow-x-auto max-h-[300px] overflow-y-auto pr-1">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="border-b border-slate-800/60 text-slate-400 font-bold uppercase tracking-wider">
+                          <th className="py-2 px-1">Head / Parameter</th>
+                          <th className="py-2 px-1 text-right">Basis</th>
+                          <th className="py-2 px-1 text-right">Amount (Rs.)</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/40 text-slate-350">
+                        {(() => {
+                          const isDeath = calculatedResult.case_type === "death";
+                          const rows = isDeath ? [
+                            { label: "Monthly Income", basis: "Base parameter", value: calculatedResult.monthly_income },
+                            { label: `Future Prospects (${calculatedResult.future_prospect_percentage}%)`, basis: `+${calculatedResult.future_prospect_percentage}% scale`, value: calculatedResult.future_prospect_amount },
+                            { label: "Enhanced Monthly Income", basis: "Monthly + Prospects", value: calculatedResult.enhanced_monthly_income },
+                            { label: "Annual Income (Enhanced)", basis: "Enhanced Monthly × 12", value: calculatedResult.annual_income },
+                            { label: `Deduction for Personal Expenses (${calculatedResult.deduction_percentage}%)`, basis: `-${calculatedResult.deduction_percentage}% of annual`, value: calculatedResult.deduction_amount },
+                            { label: "Net Dependency Income", basis: "Annual - Deduction", value: calculatedResult.dependency_income },
+                            { label: "Sarla Verma Multiplier", basis: `Age ${age} → Multiplier`, value: calculatedResult.multiplier, isRaw: true },
+                            { label: "Loss of Dependency", basis: "Dependency × Multiplier", value: calculatedResult.loss_of_dependency },
+                            { label: "Loss of Consortium", basis: "Conventional head", value: calculatedResult.consortium },
+                            { label: "Funeral Expenses", basis: "Conventional head", value: calculatedResult.funeral_expenses },
+                            { label: "Loss of Estate", basis: "Conventional head", value: calculatedResult.loss_estate },
+                          ] : [
+                            { label: "Annual Income", basis: "Monthly × 12", value: calculatedResult.annual_income },
+                            { label: "Sarla Verma Multiplier", basis: `Age ${age} → Multiplier`, value: calculatedResult.multiplier, isRaw: true },
+                            { label: `Loss of Future Income (${disability}%)`, basis: `Annual × ${disability}% × Multiplier`, value: calculatedResult.future_income_loss },
+                            { label: "Medical Expenses", basis: "Actual Bills", value: calculatedResult.medical_expenses },
+                            { label: "Future Medical Expenses", basis: "Estimated", value: calculatedResult.future_medical_expenses },
+                            { label: "Pain & Suffering", basis: "Non-Pecuniary head", value: calculatedResult.pain_and_suffering },
+                            { label: "Transportation Charges", basis: "Pecuniary head", value: calculatedResult.transportation },
+                            { label: "Special Diet", basis: "Pecuniary head", value: calculatedResult.special_diet },
+                            { label: "Attender Charges", basis: "Pecuniary head", value: calculatedResult.attender_charges },
+                            { label: "Loss of Income (Treatment)", basis: "Pecuniary head", value: calculatedResult.loss_of_income },
+                          ];
+
+                          if (!isDeath) {
+                            if (calculatedResult.coliti > 0) rows.push({ label: "Custody / Litigation Expenses", basis: "Other head", value: calculatedResult.coliti });
+                            if (calculatedResult.misex > 0) rows.push({ label: "Miscellaneous Expenses", basis: "Other head", value: calculatedResult.misex });
+                            if (calculatedResult.loamiti > 0) rows.push({ label: "Loss of Amenities", basis: "Other head", value: calculatedResult.loamiti });
+                            if (calculatedResult.lopmarri > 0) rows.push({ label: "Loss of Marriage Prospects", basis: "Other head", value: calculatedResult.lopmarri });
+                            if (calculatedResult.loexlife > 0) rows.push({ label: "Loss of Expectation of Life", basis: "Other head", value: calculatedResult.loexlife });
+                            if (calculatedResult.loveaff > 0) rows.push({ label: "Love & Affection", basis: "Other head", value: calculatedResult.loveaff });
+                            if (calculatedResult.lossofenjoy > 0) rows.push({ label: "Loss of Enjoyment of Life", basis: "Other head", value: calculatedResult.lossofenjoy });
+                          }
+
+                          return rows.map((row, rIdx) => (
+                            <tr key={rIdx} className="hover:bg-slate-800/10 transition-colors">
+                              <td className="py-2 px-1 font-semibold text-slate-350">{row.label}</td>
+                              <td className="py-2 px-1 text-right text-slate-500 font-mono text-[10px]">{row.basis}</td>
+                              <td className="py-2 px-1 text-right font-mono font-bold text-slate-200">
+                                {row.isRaw ? row.value : `Rs. ${Number(row.value || 0).toLocaleString('en-IN')}`}
+                              </td>
+                            </tr>
+                          ));
+                        })()}
+                      </tbody>
+                    </table>
+                  </div>
+                  
+                  <div className="border-t border-indigo-500/20 pt-4 mt-1 flex justify-between items-center bg-gradient-to-r from-indigo-950/30 to-purple-950/20 p-4 rounded-xl border border-indigo-500/10 shrink-0">
+                    <span className="text-xs font-bold text-indigo-300">Total Quantum Calculated:</span>
+                    <span className="text-lg font-black text-indigo-200">
+                      Rs. {(calculatedResult.final_amount || calculatedResult.final_compensation || 0).toLocaleString('en-IN')}
+                    </span>
+                  </div>
+                  
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setActiveTab("benchmarking")}
+                      className="flex-1 bg-indigo-950/40 hover:bg-indigo-900/30 border border-indigo-500/30 text-xs font-semibold py-2 px-3 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer text-indigo-300"
+                    >
+                      <span>Precedents Benchmarking Analysis</span>
+                      <ArrowRight className="h-3 w-3 text-indigo-400" />
+                    </button>
+                    <button
+                      onClick={() => setCalculatedResult(null)}
+                      className="bg-slate-900 hover:bg-slate-850 border border-slate-800 text-slate-400 hover:text-slate-200 text-xs font-semibold py-2 px-3 rounded-xl transition cursor-pointer"
+                    >
+                      Clear Result
+                    </button>
+                  </div>
+                </div>
+              )}
+              
               {/* PDF Dropper & Uploader */}
               <div 
                 ref={dropZoneRef}
@@ -1719,18 +1818,75 @@ export default function CompensationPage() {
                   </div>
                   
                   <div className="flex-1 overflow-auto p-5">
-                    <div className="flex flex-col gap-3">
-                      <div className="text-xs">
-                        <span className="text-slate-500 block mb-1">Point UUID:</span>
-                        <span className="font-mono text-indigo-400 select-all">{selectedPoint.id}</span>
+                    <div className="flex flex-col gap-4">
+                      
+                      {/* UUID & Core Metadata */}
+                      <div className="text-xs space-y-2">
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-500 font-semibold">Point UUID:</span>
+                          <span className="font-mono text-indigo-400 select-all font-semibold text-[10px]">{selectedPoint.id}</span>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-2 mt-2">
+                          <div className="bg-slate-950/60 border border-slate-850 p-2.5 rounded-xl">
+                            <span className="text-[9px] text-slate-500 uppercase font-bold block mb-0.5">Document</span>
+                            <span className="text-xs font-semibold text-slate-300 truncate block" title={selectedPoint.payload?.filename}>
+                              {selectedPoint.payload?.filename || "Unknown"}
+                            </span>
+                          </div>
+                          
+                          <div className="bg-slate-950/60 border border-slate-850 p-2.5 rounded-xl">
+                            <span className="text-[9px] text-slate-500 uppercase font-bold block mb-0.5">Page Reference</span>
+                            <span className="text-xs font-semibold text-slate-300 block">
+                              Page {selectedPoint.payload?.page || "N/A"}
+                            </span>
+                          </div>
+                          
+                          <div className="bg-slate-950/60 border border-slate-850 p-2.5 rounded-xl">
+                            <span className="text-[9px] text-slate-500 uppercase font-bold block mb-0.5">Case Type</span>
+                            <span className="text-xs font-semibold text-indigo-400 capitalize block">
+                              {selectedPoint.payload?.case_type || "injury"}
+                            </span>
+                          </div>
+                          
+                          <div className="bg-slate-950/60 border border-slate-850 p-2.5 rounded-xl">
+                            <span className="text-[9px] text-slate-500 uppercase font-bold block mb-0.5">Document Type</span>
+                            <span className="text-xs font-semibold text-slate-300 block">
+                              {selectedPoint.payload?.document_type || "Judgment"}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Generated Context */}
+                      <div className="flex flex-col gap-1 border-t border-slate-850 pt-3">
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-indigo-400">Generated Context (LLM)</span>
+                        <div className="bg-indigo-950/15 border border-indigo-500/10 rounded-xl p-3 text-xs text-indigo-200 leading-relaxed font-medium whitespace-pre-wrap select-text">
+                          {selectedPoint.payload?.context || "No contextual metadata generated."}
+                        </div>
+                      </div>
+
+                      {/* Chunk Content */}
+                      <div className="flex flex-col gap-1 border-t border-slate-850 pt-3">
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Chunk Content</span>
+                        <div className="bg-slate-950/90 border border-slate-850 rounded-xl p-3 text-xs text-slate-300 leading-relaxed whitespace-pre-wrap select-text max-h-[180px] overflow-y-auto">
+                          {selectedPoint.payload?.content || selectedPoint.payload?.text || "No content available."}
+                        </div>
                       </div>
                       
-                      <div className="text-xs border-t border-slate-850 pt-3">
-                        <span className="text-slate-500 block mb-1">JSON Payload:</span>
-                        <pre className="bg-slate-950 border border-slate-850 p-4 rounded-xl text-[10px] font-mono text-slate-400 overflow-x-auto whitespace-pre-wrap leading-relaxed select-all">
-                          {JSON.stringify(selectedPoint.payload, null, 2)}
-                        </pre>
+                      {/* Full Raw Payload (Collapsible) */}
+                      <div className="border-t border-slate-850 pt-3">
+                        <details className="group">
+                          <summary className="flex justify-between items-center text-[10px] uppercase font-bold tracking-wider text-slate-500 cursor-pointer hover:text-slate-400 list-none select-none">
+                            <span>Inspect Full JSON Payload</span>
+                            <span className="text-[8px] transition-transform group-open:rotate-180">▼</span>
+                          </summary>
+                          <pre className="mt-2 bg-slate-950 border border-slate-850 p-3 rounded-xl text-[10px] font-mono text-slate-400 overflow-x-auto whitespace-pre-wrap leading-relaxed select-all max-h-[140px] overflow-y-auto">
+                            {JSON.stringify(selectedPoint.payload, null, 2)}
+                          </pre>
+                        </details>
                       </div>
+
                     </div>
                   </div>
                 </div>
