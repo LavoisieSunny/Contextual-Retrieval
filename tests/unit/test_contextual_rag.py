@@ -46,10 +46,21 @@ class TestContextualRAG(unittest.TestCase):
 
     def test_settings_loading(self):
         """Verify settings retrieve configured environment variables or defaults."""
-        self.assertEqual(settings.CONTEXT_MODEL, "qwen3:4b")
-        self.assertEqual(settings.CONTEXT_MAX_WORDS, 50)
-        self.assertEqual(settings.CHUNK_SIZE, 1000)
-        self.assertEqual(settings.CHUNK_OVERLAP, 200)
+        from app.core.settings import Settings
+        
+        # 1. Test default values (without env variables set)
+        with patch.dict("os.environ", {}):
+            default_settings = Settings(_env_file=None)
+            self.assertEqual(default_settings.CONTEXT_MODEL, "qwen3:4b")
+            self.assertEqual(default_settings.CONTEXT_MAX_WORDS, 80)
+            self.assertEqual(default_settings.CHUNK_SIZE, 1000)
+            self.assertEqual(default_settings.CHUNK_OVERLAP, 200)
+
+        # 2. Test environment override
+        with patch.dict("os.environ", {"CONTEXT_MAX_WORDS": "50", "CONTEXT_MODEL": "custom-model"}):
+            override_settings = Settings(_env_file=None)
+            self.assertEqual(override_settings.CONTEXT_MAX_WORDS, 50)
+            self.assertEqual(override_settings.CONTEXT_MODEL, "custom-model")
 
     @patch("langchain_ollama.ChatOllama")
     def test_ollama_model_loading(self, mock_chat_ollama):
@@ -165,7 +176,7 @@ class TestContextualRAG(unittest.TestCase):
 
             # Assertions
             self.assertTrue(len(chunks) > 0)
-            mock_index.assert_called_once_with(document_id, chunks)
+            mock_index.assert_called_once_with(document_id, chunks, None)
             
             # Check page numbers are correctly mapped from --- PAGE X --- boundaries
             page_1_chunk = chunks[0]
