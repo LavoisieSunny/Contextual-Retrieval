@@ -126,6 +126,15 @@ def process_upload_background(document_id: str, file_path: str, file_ext: str, f
             "status": "success",
             "message": f"File indexed successfully. Split into {len(contextual_chunks)} contextual chunks."
         })
+        
+        # Invalidate the Qdrant points cache so dashboard reflects updates immediately
+        try:
+            from app.main import qdrant_points_cache
+            qdrant_points_cache["data"] = None
+            logger.info("Invalidated Qdrant points cache after successful ingestion.")
+        except Exception as cache_err:
+            logger.warning(f"Failed to invalidate Qdrant points cache: {cache_err}")
+            
         logger.info(f"Background processing succeeded for document {document_id}")
         
     except Exception as e:

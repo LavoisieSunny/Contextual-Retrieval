@@ -297,12 +297,23 @@ async def chat_with_pdf(request: PDFChatRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"LLM Chat failed: {str(e)}")
 
+# Simple time-based TTL cache for Qdrant points (Task 12)
+qdrant_points_cache = {"timestamp": 0.0, "data": None}
+
 @app.get("/api/qdrant/points")
 async def get_qdrant_points():
     """
     Returns collection stats and points from local Qdrant database 
-    for visual rendering in the embedded dashboard.
+    for visual rendering in the embedded dashboard. Caches results for 30s.
     """
+    import time
+    
+    current_time = time.time()
+    if qdrant_points_cache["data"] is not None and (current_time - qdrant_points_cache["timestamp"] < 30.0):
+        logger.info("Qdrant points cache hit (30s TTL). Returning cached data.")
+        return qdrant_points_cache["data"]
+
+    logger.info("Qdrant points cache miss. Querying database...")
     try:
         client = get_qdrant_client()
         if client is None:
@@ -347,7 +358,7 @@ async def get_qdrant_points():
                     "payload": p.payload
                 })
 
-        return {
+        response_data = {
             "success": True,
             "collection_name": COLLECTION_NAME,
             "points_count": points_count,
@@ -356,5 +367,11 @@ async def get_qdrant_points():
             "vector_size": vector_size,
             "points": points_list
         }
+        
+        # Update cache
+        qdrant_points_cache["timestamp"] = time.time()
+        qdrant_points_cache["data"] = response_data
+        
+        return response_data
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to load database points: {str(e)}")
