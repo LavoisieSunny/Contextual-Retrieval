@@ -107,19 +107,14 @@ class ContextualIngestionPipeline:
  
         logger.info(f"Generating contexts for {len(chunks)} chunks concurrently...")
         
-        # Parallel generation of contexts using asyncio loop
-        import asyncio
-        try:
-            contexts = asyncio.run(self._generate_all_contexts(chunks, doc_summary))
-        except RuntimeError:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                from concurrent.futures import ThreadPoolExecutor
-                with ThreadPoolExecutor() as executor:
-                    future = executor.submit(lambda: asyncio.run(self._generate_all_contexts(chunks, doc_summary)))
-                    contexts = future.result()
-            else:
-                contexts = loop.run_until_complete(self._generate_all_contexts(chunks, doc_summary))
+        import concurrent.futures as _cf
+
+        def _run_contexts_sync():
+            import asyncio
+            return asyncio.run(self._generate_all_contexts(chunks, doc_summary))
+
+        with _cf.ThreadPoolExecutor(max_workers=1) as pool:
+            contexts = pool.submit(_run_contexts_sync).result()
 
         contextual_chunks = []
         last_found_idx = 0
