@@ -7,6 +7,32 @@ import { ENDPOINTS } from "@/config/api";
 export default function Dashboard() {
   const [health, setHealth] = useState({ api: "loading", qdrant: "loading", storage: "loading" });
   const [loading, setLoading] = useState(true);
+  const [qdrantMetrics, setQdrantMetrics] = useState({
+    points_count: 0,
+    doc_count: 0,
+    loading: true
+  });
+
+  const fetchQdrantMetrics = async () => {
+    try {
+      const res = await fetch(ENDPOINTS.QDRANT_POINTS);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          const points = data.points || [];
+          const uniqueDocs = new Set(points.map(p => p.payload?.filename || p.payload?.document_id).filter(Boolean));
+          setQdrantMetrics({
+            points_count: data.points_count || 0,
+            doc_count: uniqueDocs.size,
+            loading: false
+          });
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch Qdrant metrics:", err);
+      setQdrantMetrics(prev => ({ ...prev, loading: false }));
+    }
+  };
 
   const fetchHealth = async () => {
     setLoading(true);
@@ -25,8 +51,13 @@ export default function Dashboard() {
     }
   };
 
+  const handleRefresh = async () => {
+    await Promise.all([fetchHealth(), fetchQdrantMetrics()]);
+  };
+
   useEffect(() => {
     fetchHealth();
+    fetchQdrantMetrics();
   }, []);
 
   const getStatusIcon = (status) => {
@@ -49,11 +80,11 @@ export default function Dashboard() {
           <p className="text-sm text-slate-400">Monitor system status, health states, and performance statistics.</p>
         </div>
         <button
-          onClick={fetchHealth}
-          disabled={loading}
+          onClick={handleRefresh}
+          disabled={loading || qdrantMetrics.loading}
           className="flex items-center gap-2 px-4 py-2 bg-slate-900 border border-slate-850 hover:bg-slate-800 rounded-xl text-sm font-medium transition duration-300 disabled:opacity-50 cursor-pointer"
         >
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          <RefreshCw className={`h-4 w-4 ${loading || qdrantMetrics.loading ? "animate-spin" : ""}`} />
           Refresh Status
         </button>
       </div>
@@ -119,25 +150,31 @@ export default function Dashboard() {
           <div>
             <div className="flex items-center gap-3 mb-4">
               <BarChart3 className="h-5 w-5 text-indigo-400" />
-              <h3 className="font-semibold text-lg text-white">System Metrics (Mocked)</h3>
+              <h3 className="font-semibold text-lg text-white">System Metrics</h3>
             </div>
             <div className="space-y-4">
               <div className="flex justify-between items-center text-sm border-b border-slate-800/40 pb-2">
                 <span className="text-slate-400">Total Documents Ingested</span>
-                <span className="font-semibold text-slate-200">12</span>
+                <span className="font-semibold text-slate-200">
+                  {qdrantMetrics.loading ? "..." : qdrantMetrics.doc_count}
+                </span>
               </div>
               <div className="flex justify-between items-center text-sm border-b border-slate-800/40 pb-2">
                 <span className="text-slate-400">Generated Text Chunks</span>
-                <span className="font-semibold text-slate-200">2,410</span>
+                <span className="font-semibold text-slate-200">
+                  {qdrantMetrics.loading ? "..." : qdrantMetrics.points_count.toLocaleString()}
+                </span>
               </div>
               <div className="flex justify-between items-center text-sm border-b border-slate-800/40 pb-2">
                 <span className="text-slate-400">Qdrant Indexed Vectors</span>
-                <span className="font-semibold text-slate-200">2,410</span>
+                <span className="font-semibold text-slate-200">
+                  {qdrantMetrics.loading ? "..." : qdrantMetrics.points_count.toLocaleString()}
+                </span>
               </div>
             </div>
           </div>
           <p className="text-xs text-slate-500 mt-6">
-            Metrics are generated locally. In future phases, these counts will query the Postgres DB and Qdrant client collections directly.
+            Metrics are loaded dynamically from the live Qdrant vector database collection.
           </p>
         </div>
 
