@@ -28,3 +28,5 @@ pypdf>=4.0.0
 # BGE-M3 and Semantic Chunking support
 FlagEmbedding>=1.2.0
 sentence-transformers>=2.7.0
+python-docx>=1.1.0
+
