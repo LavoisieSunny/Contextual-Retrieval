@@ -7,6 +7,22 @@ from app.core.settings import settings
 logger = logging.getLogger("ContextualChunker")
 
 
+from langchain_core.embeddings import Embeddings
+
+class BGEEmbeddingsWrapper(Embeddings):
+    """
+    A custom LangChain Embeddings wrapper that delegates to the existing 
+    BGE-M3 singleton to save RAM and avoid redundant HF downloads/loads.
+    """
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        from app.services.embeddings.bge_m3 import embed_dense
+        return embed_dense(texts)
+
+    def embed_query(self, text: str) -> List[float]:
+        from app.services.embeddings.bge_m3 import embed_dense
+        return embed_dense([text])[0]
+
+
 class ContextualChunker:
     def __init__(self, chunk_size: int = None, chunk_overlap: int = None):
         self.chunk_size = chunk_size or settings.CHUNK_SIZE       # keep as fallback
@@ -18,14 +34,9 @@ class ContextualChunker:
         if self._splitter is None:
             try:
                 from langchain_experimental.text_splitter import SemanticChunker
-                from langchain_community.embeddings import HuggingFaceBgeEmbeddings
 
-                logger.info("Initializing SemanticChunker with BGE-M3...")
-                embeddings = HuggingFaceBgeEmbeddings(
-                    model_name="BAAI/bge-m3",
-                    model_kwargs={"device": "cpu"},
-                    encode_kwargs={"normalize_embeddings": True}
-                )
+                logger.info("Initializing SemanticChunker with custom BGE-M3 wrapper...")
+                embeddings = BGEEmbeddingsWrapper()
                 self._splitter = SemanticChunker(
                     embeddings=embeddings,
                     breakpoint_threshold_type="percentile",  
