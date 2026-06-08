@@ -21,7 +21,8 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost/api
+      # Base domain only — NO /api suffix. api.js adds /api/* paths itself.
+      - NEXT_PUBLIC_API_URL=http://localhost
       - PORT=3000
     depends_on:
       - backend
@@ -46,9 +47,11 @@ services:
       - MAX_FILE_SIZE_MB=50
       - STORAGE_DIR=/app/storage
     volumes:
+      # Ensure storage folder exists on host before mounting
       - ./backend/app/storage:/app/storage
     depends_on:
-      - qdrant
+      qdrant:
+        condition: service_healthy
     restart: always
     networks:
       - app-network
@@ -60,6 +63,13 @@ services:
       - "6334:6334"
     volumes:
       - qdrant_data:/qdrant/storage
+    # Health check so backend waits until Qdrant is actually ready
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:6333/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     restart: always
     networks:
       - app-network
@@ -70,3 +80,4 @@ networks:
 
 volumes:
   qdrant_data:
+
