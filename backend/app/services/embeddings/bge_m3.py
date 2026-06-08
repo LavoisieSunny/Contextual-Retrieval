@@ -26,9 +26,10 @@ def get_bge_m3():
 def embed_dense(texts: list[str]) -> list[list[float]]:
     """Returns dense vectors for a list of texts."""
     model = get_bge_m3()
+    batch_size = 32 if torch.cuda.is_available() else 8
     output = model.encode(
         texts,
-        batch_size=4,
+        batch_size=batch_size,
         max_length=8192,
         return_dense=True,
         return_sparse=False,
@@ -40,9 +41,10 @@ def embed_dense(texts: list[str]) -> list[list[float]]:
 def embed_sparse(texts: list[str]) -> list[dict]:
     """Returns sparse (lexical weight) vectors for a list of texts."""
     model = get_bge_m3()
+    batch_size = 32 if torch.cuda.is_available() else 8
     output = model.encode(
         texts,
-        batch_size=4,
+        batch_size=batch_size,
         max_length=8192,
         return_dense=False,
         return_sparse=True,
@@ -55,9 +57,10 @@ def embed_sparse(texts: list[str]) -> list[dict]:
 def embed_both(texts: list[str]) -> tuple[list, list]:
     """Returns (dense_vecs, sparse_vecs) in one model call — more efficient."""
     model = get_bge_m3()
+    batch_size = 32 if torch.cuda.is_available() else 8
     output = model.encode(
         texts,
-        batch_size=4,
+        batch_size=batch_size,
         max_length=8192,
         return_dense=True,
         return_sparse=True,
