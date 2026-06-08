@@ -1239,15 +1239,13 @@ def perform_ocr_on_scanned_pdf(file_path: str, progress_callback=None, scan_all_
                 }
                 return idx, [], meta
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=OCR_MAX_PARALLEL_WORKERS) as executor:
-            futures = [executor.submit(process_pre_rendered_page, idx) for idx in range(total_pages)]
-            for future in concurrent.futures.as_completed(futures):
-                idx, page_lines, page_meta = future.result()
-                page_results[idx] = (page_lines, page_meta)
-                if "ocr_time" in page_meta:
-                    total_ocr_duration += page_meta["ocr_time"]
-                if progress_callback:
-                    progress_callback(int((len(page_results) / total_pages) * 95))
+        for idx in range(total_pages):
+            result_idx, page_lines, page_meta = process_pre_rendered_page(idx)
+            page_results[result_idx] = (page_lines, page_meta)
+            if "ocr_time" in page_meta:
+                total_ocr_duration += page_meta["ocr_time"]
+            if progress_callback:
+                progress_callback(int(((idx + 1) / total_pages) * 95))
 
         # Cleanup pre-rendered images
         try:
