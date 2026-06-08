@@ -52,13 +52,17 @@ async def startup_event():
         logger.error(f"Startup check failed: {str(e)}")
 
     # Warm up PaddleOCR — isolated so failure never blocks Ollama/Qdrant
-    try:
-        logger.info("Warming up PaddleOCR singleton...")
-        from app.services.document.ocr import get_ocr_instance
-        await asyncio.to_thread(get_ocr_instance)
-        logger.info("PaddleOCR warm-up complete.")
-    except Exception as e:
-        logger.error(f"PaddleOCR warm-up failed (non-fatal): {str(e)}")
+    # Warm up PaddleOCR in the background so uvicorn can bind to the port and start immediately
+    def run_warmup():
+        try:
+            logger.info("Warming up PaddleOCR singleton in the background...")
+            from app.services.document.ocr import get_ocr_instance
+            get_ocr_instance()
+            logger.info("PaddleOCR warm-up complete.")
+        except Exception as e:
+            logger.error(f"PaddleOCR warm-up failed (non-fatal): {str(e)}")
+
+    asyncio.create_task(asyncio.to_thread(run_warmup))
 
 # Dynamic CORS origins configuration mapping the FRONTEND_PORT
 origins = [

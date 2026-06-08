@@ -4,7 +4,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import (
     VectorParams, Distance,
     SparseVectorParams, SparseIndexParams,
-    HnswConfigDiff, QuantizationConfig,
+    HnswConfigDiff, ScalarQuantization,
     ScalarQuantizationConfig, ScalarType
 )
 import logging
@@ -40,7 +40,7 @@ def create_dual_vector_collection(client: QdrantClient):
                     m=16,               # HNSW graph connections
                     ef_construct=100    # build quality vs speed
                 ),
-                quantization_config=QuantizationConfig(
+                quantization_config=ScalarQuantization(
                     scalar=ScalarQuantizationConfig(
                         type=ScalarType.INT8,
                         quantile=0.99,

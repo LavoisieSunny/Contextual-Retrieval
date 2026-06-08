@@ -39,3 +39,7 @@ backend/app/storage/cache/*
 scratch/
 test_scan.png
 
+# Local Qdrant database and nested runtime directories
+backend/backend/
+**/qdrant_local/
+backend/app/storage/qdrant_local/

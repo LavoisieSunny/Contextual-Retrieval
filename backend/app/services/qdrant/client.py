@@ -23,8 +23,17 @@ def get_qdrant_client() -> QdrantClient | None:
         logger.info("QdrantClient connected successfully.")
     except Exception as e:
         logger.error(f"Failed to connect to Qdrant at {settings.QDRANT_HOST}:{settings.QDRANT_PORT} — {e}")
-        # Do NOT cache None — allow retry on next request
-        _client = None
+        # Fall back to local file-based storage
+        try:
+            local_db_path = str(settings.storage_path / "qdrant_local")
+            logger.info(f"Falling back to local file-based Qdrant client at: {local_db_path}")
+            client = QdrantClient(path=local_db_path)
+            client.get_collections()
+            _client = client
+            logger.info("Local file-based QdrantClient connected successfully.")
+        except Exception as local_err:
+            logger.critical(f"Failed to initialize local fallback Qdrant client: {local_err}")
+            _client = None
     return _client
 
 
