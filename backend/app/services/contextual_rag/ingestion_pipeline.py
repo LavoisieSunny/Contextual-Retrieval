@@ -73,6 +73,21 @@ class ContextualIngestionPipeline:
         4. Creates structured contextual chunks.
         5. Saves each contextual chunk as JSON and returns the list of chunks.
         """
+        # Cache check to skip Ollama generation if already processed
+        consolidated_file = self.storage_dir / f"{document_id}.json"
+        if consolidated_file.exists():
+            try:
+                with open(consolidated_file, "r", encoding="utf-8") as f:
+                    cached_chunks = json.load(f)
+                logger.info(f"Contextual chunks cache hit for document {document_id}. Returning cached chunks.")
+                
+                # Ensure it remains indexed in Qdrant
+                from app.services.qdrant.vector_db import index_contextual_chunks
+                index_contextual_chunks(document_id, cached_chunks, suggestions)
+                return cached_chunks
+            except Exception as e:
+                logger.warning(f"Failed to load cached chunks for document {document_id} from {consolidated_file}: {e}. Running pipeline.")
+
         logger.info(f"Processing document {document_id} through contextual RAG ingestion...")
         
         cleaned_text = self._clean_text(raw_text)
